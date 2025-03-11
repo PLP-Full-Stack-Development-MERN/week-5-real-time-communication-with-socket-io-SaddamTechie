@@ -4,6 +4,7 @@ const socketIo = require("socket.io");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const { v4: uuidv4 } = require("uuid"); // Import UUID
 const connectDB = require("./conf/db");
 
 dotenv.config();
@@ -12,7 +13,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*",
+    origin: "http://localhost:5173", // Restrict to frontend origin
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
@@ -29,26 +30,49 @@ const noteSchema = new mongoose.Schema({
 const Note = mongoose.model("Note", noteSchema);
 
 // Socket.io Connection
+const usersInRoom = new Map(); // Map to store roomId -> {socketId: username}
+
 io.on("connection", (socket) => {
   console.log("New client connected:", socket.id);
 
-  socket.on("joinRoom", async (roomId) => {
+  socket.on("createRoom", async (callback) => {
+    const roomId = uuidv4(); // Generate unique room ID
     socket.join(roomId);
-    console.log(`Client ${socket.id} joined room: ${roomId}`);
+    console.log(`Client ${socket.id} created room: ${roomId}`);
 
-    // Send current note content to the new user
+    // Initialize user list for the room
+    usersInRoom.set(roomId, new Map([[socket.id, "Unnamed"]])); // Default username
+    socket.emit("roomCreated", roomId); // Send room ID back to creator
+    callback(roomId); // Callback for frontend redirection
+  });
+
+  socket.on("joinRoom", async ({ roomId, username }) => {
+    socket.join(roomId);
+    console.log(`Client ${socket.id} joined room: ${roomId} as ${username}`);
+
+    // Send current note content
     const note = await Note.findOne({ roomId });
     socket.emit("loadNote", note?.content || "");
 
-    // Get all clients in the room (including the new user)
+    // Update users in room
+    if (!usersInRoom.has(roomId)) {
+      usersInRoom.set(roomId, new Map());
+    }
+    const roomUsers = usersInRoom.get(roomId);
+    roomUsers.set(socket.id, username || "Unnamed");
+
+    // Get all clients in the room
     const clientsInRoom = await io.in(roomId).fetchSockets();
-    const userIds = clientsInRoom.map((client) => client.id);
+    const userList = Array.from(roomUsers.entries()).map(([id, name]) => ({
+      id,
+      username: name,
+    }));
 
-    // Send the full list of users to the newly joined client
-    socket.emit("updateUsers", userIds);
+    // Send full user list to the new user
+    socket.emit("updateUsers", userList);
 
-    // Notify existing users (excluding the new user) of the new join
-    socket.to(roomId).emit("userJoined", socket.id);
+    // Notify existing users of the new join
+    socket.to(roomId).emit("userJoined", { id: socket.id, username });
   });
 
   socket.on("updateNote", async ({ roomId, content }) => {
@@ -63,12 +87,17 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", async () => {
     console.log("Client disconnected:", socket.id);
-    // Notify all rooms the user was in
-    for (const roomId of socket.rooms) {
-      if (roomId !== socket.id) { // Exclude the socket's own room
-        const clientsInRoom = await io.in(roomId).fetchSockets();
-        const userIds = clientsInRoom.map((client) => client.id);
-        io.to(roomId).emit("updateUsers", userIds); // Update all clients in the room
+    for (const [roomId, roomUsers] of usersInRoom) {
+      if (roomUsers.has(socket.id)) {
+        roomUsers.delete(socket.id);
+        if (roomUsers.size === 0) {
+          usersInRoom.delete(roomId); // Clean up empty rooms
+        } else {
+          const userList = Array.from(roomUsers.entries()).map(
+            ([id, name]) => ({ id, username: name })
+          );
+          io.to(roomId).emit("updateUsers", userList);
+        }
       }
     }
   });
@@ -87,5 +116,5 @@ app.get("/api/notes/:roomId", async (req, res) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  connectDB(); 
+  connectDB();
 });

@@ -5,8 +5,8 @@ export const UsersList = ({ users }) => {
     <div className="users-list">
       <h3>Online Users ({users.length})</h3>
       <ul>
-        {users.map((userId) => (
-          <li key={userId}>{userId}</li>
+        {users.map((user) => (
+          <li key={user.id}>{user.username}</li>
         ))}
       </ul>
     </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import io from "socket.io-client";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { NoteEditor } from "./components/NoteEditor";
 import { UsersList } from "./components/UsersList";
 
@@ -13,12 +13,23 @@ function App() {
   const [noteContent, setNoteContent] = useState("");
   const [users, setUsers] = useState([]);
   const { roomId } = useParams();
+  const { state } = useLocation(); // Get username from state
+  const navigate = useNavigate();
+  const username = state?.username || "Unnamed";
 
   useEffect(() => {
     socket.on("connect", () => console.log("Connected to server:", socket.id));
     socket.on("connect_error", (err) => console.error("Connection error:", err));
 
-    socket.emit("joinRoom", roomId);
+    if (roomId === "new") {
+      // Create a new room
+      socket.emit("createRoom", (newRoomId) => {
+        navigate(`/room/${newRoomId}`, { state: { username } });
+      });
+    } else {
+      // Join an existing room
+      socket.emit("joinRoom", { roomId, username });
+    }
 
     socket.on("loadNote", (content) => {
       console.log("Loaded note:", content);
@@ -30,16 +41,17 @@ function App() {
       setNoteContent(content);
     });
 
-    // Set the full list of users when joining or on update
-    socket.on("updateUsers", (userIds) => {
-      console.log("Updated user list:", userIds);
-      setUsers(userIds);
+    socket.on("updateUsers", (userList) => {
+      console.log("Updated user list:", userList);
+      setUsers(userList);
     });
 
-    // Add a new user incrementally
-    socket.on("userJoined", (userId) => {
-      console.log("User joined:", userId);
-      setUsers((prev) => [...new Set([...prev, userId])]); // Avoid duplicates
+    socket.on("userJoined", ({ id, username }) => {
+      console.log("User joined:", { id, username });
+      setUsers((prev) => {
+        const newUsers = prev.filter((u) => u.id !== id);
+        return [...newUsers, { id, username }];
+      });
     });
 
     return () => {
@@ -50,7 +62,7 @@ function App() {
       socket.off("updateUsers");
       socket.off("userJoined");
     };
-  }, [roomId]);
+  }, [roomId, username, navigate]);
 
   const handleNoteChange = (newContent) => {
     setNoteContent(newContent);

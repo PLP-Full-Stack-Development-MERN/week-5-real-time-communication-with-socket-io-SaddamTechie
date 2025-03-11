@@ -6,6 +6,7 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const { v4: uuidv4 } = require("uuid"); // Import UUID
 const connectDB = require("./conf/db");
+const path = require("node:path");
 
 dotenv.config();
 
@@ -112,6 +113,18 @@ app.get("/api/notes/:roomId", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
+
+if (process.env.NODE_ENV === "production") {
+    app.use(express.static(path.join(__dirname, "../frontend/dist")));
+
+    app.get("*", (req, res) => {
+        res.sendFile(path.resolve(__dirname, "../frontend", "dist", "index.html"));
+    })
+}
+
+
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {

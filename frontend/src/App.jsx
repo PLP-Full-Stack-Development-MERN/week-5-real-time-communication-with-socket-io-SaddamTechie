@@ -4,7 +4,7 @@ import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { NoteEditor } from "./components/NoteEditor";
 import { UsersList } from "./components/UsersList";
 
-const socket = io("http://localhost:5000", {
+const socket = io({
   transports: ["websocket", "polling"],
   reconnection: true,
 });

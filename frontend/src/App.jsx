@@ -30,6 +30,13 @@ function App() {
       setNoteContent(content);
     });
 
+    // Set the full list of users when joining or on update
+    socket.on("updateUsers", (userIds) => {
+      console.log("Updated user list:", userIds);
+      setUsers(userIds);
+    });
+
+    // Add a new user incrementally
     socket.on("userJoined", (userId) => {
       console.log("User joined:", userId);
       setUsers((prev) => [...new Set([...prev, userId])]); // Avoid duplicates
@@ -40,6 +47,7 @@ function App() {
       socket.off("connect_error");
       socket.off("loadNote");
       socket.off("noteUpdated");
+      socket.off("updateUsers");
       socket.off("userJoined");
     };
   }, [roomId]);

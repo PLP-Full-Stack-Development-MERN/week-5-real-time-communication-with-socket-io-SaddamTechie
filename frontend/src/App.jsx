@@ -1,35 +1,65 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import React, { useEffect, useState } from "react";
+import io from "socket.io-client";
+import { useParams } from "react-router-dom";
+import { NoteEditor } from "./components/NoteEditor";
+import { UsersList } from "./components/UsersList";
+
+const socket = io("http://localhost:5000", {
+  transports: ["websocket", "polling"],
+  reconnection: true,
+});
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [noteContent, setNoteContent] = useState("");
+  const [users, setUsers] = useState([]);
+  const { roomId } = useParams();
+
+  useEffect(() => {
+    socket.on("connect", () => console.log("Connected to server:", socket.id));
+    socket.on("connect_error", (err) => console.error("Connection error:", err));
+
+    socket.emit("joinRoom", roomId);
+
+    socket.on("loadNote", (content) => {
+      console.log("Loaded note:", content);
+      setNoteContent(content);
+    });
+
+    socket.on("noteUpdated", (content) => {
+      console.log("Note updated:", content);
+      setNoteContent(content);
+    });
+
+    socket.on("userJoined", (userId) => {
+      console.log("User joined:", userId);
+      setUsers((prev) => [...new Set([...prev, userId])]); // Avoid duplicates
+    });
+
+    return () => {
+      socket.off("connect");
+      socket.off("connect_error");
+      socket.off("loadNote");
+      socket.off("noteUpdated");
+      socket.off("userJoined");
+    };
+  }, [roomId]);
+
+  const handleNoteChange = (newContent) => {
+    setNoteContent(newContent);
+    socket.emit("updateNote", { roomId, content: newContent });
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="app">
+      <div className="container">
+        <h1>Collaborative Notes - Room: {roomId}</h1>
+        <div className="main-content">
+          <NoteEditor content={noteContent} onChange={handleNoteChange} />
+          <UsersList users={users} />
+        </div>
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    </div>
+  );
 }
 
-export default App
+export default App;

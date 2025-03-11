@@ -1,5 +1,7 @@
 # Real-Time Collaborative Notes
 
+[Live Site](https://real-time-note-app.onrender.com)
+
 A real-time note-taking application built with MERN stack and Socket.io, allowing multiple users to collaborate on notes simultaneously.
 
 ## Features
